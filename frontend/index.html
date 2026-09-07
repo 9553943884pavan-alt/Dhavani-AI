@@ -1,0 +1,130 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Voice Latency Demo — Rime Hackathon</title>
+    <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+    <div class="container">
+        <!-- Header -->
+        <header class="header">
+            <div class="badge-row">
+                <span class="badge rime">TTS: Rime Mist v3 (Astra)</span>
+                <span class="badge groq">LLM: Groq LPU</span>
+                <span class="badge groq">STT: Whisper Large v3 Turbo</span>
+                <span id="connectionBadge" class="badge">Connecting...</span>
+            </div>
+            <h1>Voice Latency Engineering Demo</h1>
+            <p>
+                Demonstrating that streaming LLM tokens directly into Rime's WebSocket API cuts perceived response time (Time-to-First-Audio) by over 50% compared to traditional full-response buffering.
+            </p>
+        </header>
+
+        <!-- Mode Switcher Banner -->
+        <div class="mode-banner">
+            <div class="mode-info">
+                <div class="mode-title" id="modeTitle">Optimized Pipeline (Incremental WebSocket Streaming)</div>
+                <div class="mode-desc" id="modeDesc">LLM tokens stream directly into Rime Mist v3 over WebSocket. Audio starts on the first word.</div>
+            </div>
+            <div class="toggle-group">
+                <button id="optBtn" class="toggle-btn active optimized">Optimized (Streaming)</button>
+                <button id="naiveBtn" class="toggle-btn">Naive (HTTP Full)</button>
+            </div>
+        </div>
+
+        <!-- Latency Metrics HUD -->
+        <div class="card">
+            <div class="latency-grid">
+                <div class="metric-box">
+                    <span class="metric-tag">T0 • Input Received</span>
+                    <span class="metric-val" id="t0Val">—</span>
+                    <span class="metric-sub">Audio / Prompt Dispatched</span>
+                </div>
+                <div class="metric-box">
+                    <span class="metric-tag">T1 • STT Ready</span>
+                    <span class="metric-val" id="t1Val">—</span>
+                    <span class="metric-sub">Groq Whisper Transcript</span>
+                </div>
+                <div class="metric-box">
+                    <span class="metric-tag">T2 • First Token</span>
+                    <span class="metric-val" id="t2Val">—</span>
+                    <span class="metric-sub">Groq LPU TTFT</span>
+                </div>
+                <div class="metric-box hero">
+                    <span class="metric-tag">T3 • TTFA (First Audio)</span>
+                    <span class="metric-val" id="t3Val">—</span>
+                    <span class="metric-sub">User Silence → Audible Speech</span>
+                </div>
+            </div>
+
+            <!-- Comparison HUD -->
+            <div class="comparison-bar-container">
+                <div class="comp-header">
+                    <span>Side-by-Side Savings (Naive vs Optimized)</span>
+                    <span id="compDiffVal" class="comp-savings">Run both modes to compare</span>
+                </div>
+                <div class="bar-track">
+                    <div id="compBarFill" class="bar-fill"></div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Push to Talk & Input Hub -->
+        <div class="card interaction-area">
+            <button id="micBtn" class="mic-btn" title="Hold to speak">
+                <svg class="mic-icon" viewBox="0 0 24 24">
+                    <path d="M12 14c1.66 0 3-1.34 3-3V5c0-1.66-1.34-3-3-3S9 3.34 9 5v6c0 1.66 1.34 3 3 3z"/>
+                    <path d="M17 11c0 2.76-2.24 5-5 5s-5-2.24-5-5H5c0 3.53 2.61 6.43 6 6.92V21h2v-3.08c3.39-.49 6-3.39 6-6.92h-2z"/>
+                </svg>
+            </button>
+            <div id="micTip" class="interaction-tip">Hold button to speak, or use text presets below</div>
+
+            <!-- Audio Playback Status -->
+            <div class="audio-status">
+                <div id="audioStatusDot" class="audio-dot"></div>
+                <span id="audioStatusText">Audio idle</span>
+            </div>
+
+            <!-- Quick Text Input -->
+            <div class="quick-test-row">
+                <input id="textInput" type="text" class="text-input" placeholder="Type a prompt or test question (e.g. 'Explain quantum computing in two sentences')...">
+                <button id="sendBtn" class="send-btn">Send</button>
+            </div>
+
+            <!-- Preset Queries (including Hackathon stress test) -->
+            <div class="presets-container">
+                <span style="font-size: 11px; color: var(--text-muted); font-weight: 600;">Presets:</span>
+                <span class="preset-chip" onclick="selectPreset('What is the capital of France and why is it famous?')">Capital of France</span>
+                <span class="preset-chip" onclick="selectPreset('Give me 3 quick tips for better public speaking.')">Public Speaking</span>
+                <span class="preset-chip" onclick="selectPreset('Why does voice latency matter in medical or emergency dispatch applications?')">Emergency Voice</span>
+                <span class="preset-chip" style="border-color: rgba(244, 63, 94, 0.4); color: #fda4af;" onclick="selectPreset('Write a comprehensive 4-sentence paragraph describing the history of artificial intelligence and deep neural networks.')">⚡ Stress Test: Long Response</span>
+            </div>
+        </div>
+
+        <!-- Live Conversation / Stream Display -->
+        <div class="card transcript-section">
+            <div class="bubble-row">
+                <span class="bubble-label">User Query (STT / Input)</span>
+                <div id="userTranscript" class="bubble">—</div>
+            </div>
+
+            <div class="bubble-row">
+                <span class="bubble-label">Synthesized Response (Live Token Stream)</span>
+                <div class="bubble assistant">
+                    <span id="assistantResponse">—</span>
+                    <span id="streamingCursor" class="streaming-cursor" style="display: none;"></span>
+                </div>
+            </div>
+        </div>
+
+        <!-- Footer -->
+        <footer class="footer">
+            Rime Hackathon Submission • Hard Voice Problem: Perceived Response Time • Rime Mist v3 & Groq LPU
+        </footer>
+    </div>
+
+    <script src="/static/app.js"></script>
+</body>
+</html>

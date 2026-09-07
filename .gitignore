@@ -1,0 +1,11 @@
+.env
+__pycache__/
+*.pyc
+venv/
+.venv/
+*.mp3
+*.wav
+output_naive.mp3
+output_streaming.mp3
+.idea/
+.vscode/

@@ -12,10 +12,17 @@ let audioChunks = [];
 let isRecording = false;
 let isStartingRecording = false;
 let isPipelineActive = false;
+let shouldStopAfterRecordingStarts = false;
+let audioPlaybackUnlocked = false;
 
 // Audio playback state (accumulated chunks -> Blob -> HTMLAudioElement)
 let receivedAudioChunks = []; // Array of Uint8Arrays accumulating audio bytes for current response
 let currentAudioElement = null; // Currently playing standard HTML <audio> element
+let streamingMediaSource = null;
+let streamingSourceBuffer = null;
+let streamingAudioUrl = null;
+let streamingAudioQueue = [];
+let streamingAudioDone = false;
 
 // Benchmark memory for side-by-side comparison
 let lastNaiveT3 = null;
@@ -51,12 +58,22 @@ function stopCurrentAudio() {
     try {
         if (currentAudioElement) {
             currentAudioElement.pause();
-            if (currentAudioElement.src) {
-                URL.revokeObjectURL(currentAudioElement.src);
-                currentAudioElement.removeAttribute("src");
-            }
-            currentAudioElement = null;
         }
+        if (streamingMediaSource && streamingMediaSource.readyState === "open") {
+            streamingMediaSource.endOfStream();
+        }
+        if (streamingAudioUrl) {
+            URL.revokeObjectURL(streamingAudioUrl);
+            streamingAudioUrl = null;
+        }
+        if (currentAudioElement) {
+            currentAudioElement.removeAttribute("src");
+        }
+        currentAudioElement = null;
+        streamingMediaSource = null;
+        streamingSourceBuffer = null;
+        streamingAudioQueue = [];
+        streamingAudioDone = false;
     } catch (err) {
         console.error("Error stopping current audio element:", err);
     }
@@ -65,11 +82,19 @@ function stopCurrentAudio() {
 function primeAudioPlayback() {
     try {
         const audio = new Audio();
-        audio.muted = true;
+        audio.volume = 0.01;
         audio.src = "data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEARKwAAESsAAABAAgAZGF0YQAAAAA=";
         const playPromise = audio.play();
         if (playPromise !== undefined) {
-            playPromise.catch(() => {}).finally(() => {
+            playPromise.then(() => {
+                audioPlaybackUnlocked = true;
+                if (streamingAudioQueue.length > 0) {
+                    startStreamingAudioPlayback();
+                    flushStreamingAudioQueue();
+                }
+            }).catch((err) => {
+                console.warn("Audible audio playback was not unlocked:", err);
+            }).finally(() => {
                 audio.pause();
                 audio.removeAttribute("src");
             });
@@ -83,10 +108,68 @@ function primeAudioPlayback() {
 function handleAudioChunk(arrayBuffer) {
     try {
         const uint8Chunk = new Uint8Array(arrayBuffer);
-        receivedAudioChunks.push(uint8Chunk);
+        if (currentMode === "optimized" && MediaSource.isTypeSupported("audio/mpeg")) {
+            streamingAudioQueue.push(uint8Chunk);
+            startStreamingAudioPlayback();
+            flushStreamingAudioQueue();
+        } else {
+            receivedAudioChunks.push(uint8Chunk);
+        }
     } catch (err) {
         console.error("Error accumulating audio chunk into Uint8Array:", err);
     }
+}
+
+function startStreamingAudioPlayback() {
+    if (currentAudioElement || !audioPlaybackUnlocked || streamingMediaSource) return;
+
+    streamingMediaSource = new MediaSource();
+    streamingAudioUrl = URL.createObjectURL(streamingMediaSource);
+    const audio = new Audio(streamingAudioUrl);
+    currentAudioElement = audio;
+    audioStatusDot.classList.add("playing");
+    audioStatusText.textContent = "Playing synthesized audio...";
+
+    audio.onended = () => {
+        stopCurrentAudio();
+        audioStatusDot.classList.remove("playing");
+        audioStatusText.textContent = "Audio idle";
+    };
+    audio.onerror = (event) => {
+        console.error("Streaming audio playback error:", event, audio.error);
+        stopCurrentAudio();
+        audioStatusDot.classList.remove("playing");
+        audioStatusText.textContent = "Audio playback error";
+    };
+
+    streamingMediaSource.addEventListener("sourceopen", () => {
+        if (!streamingMediaSource || streamingSourceBuffer) return;
+        try {
+            streamingSourceBuffer = streamingMediaSource.addSourceBuffer("audio/mpeg");
+            streamingSourceBuffer.addEventListener("updateend", flushStreamingAudioQueue);
+            flushStreamingAudioQueue();
+            const playPromise = audio.play();
+            if (playPromise !== undefined) {
+                playPromise.catch((err) => {
+                    console.error("Streaming audio.play() rejected:", err);
+                    audioStatusText.textContent = "Audio playback failed";
+                });
+            }
+        } catch (err) {
+            console.error("Could not initialize streaming audio buffer:", err);
+            audioStatusText.textContent = "Streaming audio is not supported by this browser";
+        }
+    }, { once: true });
+}
+
+function flushStreamingAudioQueue() {
+    if (!streamingSourceBuffer || streamingSourceBuffer.updating || streamingAudioQueue.length === 0) {
+        if (streamingAudioDone && streamingSourceBuffer && !streamingSourceBuffer.updating && streamingAudioQueue.length === 0 && streamingMediaSource.readyState === "open") {
+            streamingMediaSource.endOfStream();
+        }
+        return;
+    }
+    streamingSourceBuffer.appendBuffer(streamingAudioQueue.shift());
 }
 
 // Play accumulated audio chunks when "done" event is received
@@ -140,6 +223,15 @@ function playAccumulatedAudio() {
             }
         };
 
+        if (!audioPlaybackUnlocked) {
+            audioStatusDot.classList.remove("playing");
+            audioStatusText.textContent = "Audio permission was blocked; click the microphone and try again";
+            URL.revokeObjectURL(audioUrl);
+            audio.removeAttribute("src");
+            currentAudioElement = null;
+            return;
+        }
+
         const playPromise = audio.play();
         if (playPromise !== undefined) {
             playPromise.catch((err) => {
@@ -159,6 +251,11 @@ function playAccumulatedAudio() {
         audioStatusDot.classList.remove("playing");
         audioStatusText.textContent = "Audio playback error";
     }
+}
+
+function finishStreamingAudioPlayback() {
+    streamingAudioDone = true;
+    flushStreamingAudioQueue();
 }
 
 // WebSocket Setup
@@ -275,12 +372,20 @@ function handleServerMessage(msg) {
         } else if (msg.type === "done") {
             isPipelineActive = false;
             streamingCursor.style.display = "none";
-            playAccumulatedAudio();
+            if (currentMode === "optimized" && streamingMediaSource) {
+                finishStreamingAudioPlayback();
+            } else {
+                playAccumulatedAudio();
+            }
         } else if (msg.type === "error") {
             isPipelineActive = false;
             streamingCursor.style.display = "none";
             console.error("Server error message received:", msg.message);
-            if (receivedAudioChunks.length > 0) playAccumulatedAudio();
+            if (currentMode === "optimized" && streamingMediaSource) {
+                finishStreamingAudioPlayback();
+            } else if (receivedAudioChunks.length > 0) {
+                playAccumulatedAudio();
+            }
             alert("Server message: " + msg.message);
         }
     } catch (err) {
@@ -324,9 +429,14 @@ async function startRecording() {
     try {
         if (isPipelineActive || currentAudioElement || isRecording || isStartingRecording) return;
         isStartingRecording = true;
+        shouldStopAfterRecordingStarts = false;
         const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
         audioChunks = [];
-        mediaRecorder = new MediaRecorder(stream, { mimeType: "audio/webm" });
+        const preferredMimeType = "audio/webm;codecs=opus";
+        const mimeType = MediaRecorder.isTypeSupported(preferredMimeType)
+            ? preferredMimeType
+            : "audio/webm";
+        mediaRecorder = new MediaRecorder(stream, { mimeType });
 
         mediaRecorder.ondataavailable = (e) => {
             if (e.data.size > 0) audioChunks.push(e.data);
@@ -334,6 +444,9 @@ async function startRecording() {
 
         mediaRecorder.onstop = async () => {
             try {
+                if (audioChunks.length === 0) {
+                    throw new Error("No microphone audio was captured. Hold the button while speaking and try again.");
+                }
                 const audioBlob = new Blob(audioChunks, { type: "audio/webm" });
                 const arrayBuffer = await audioBlob.arrayBuffer();
 
@@ -356,8 +469,10 @@ async function startRecording() {
         isStartingRecording = false;
         micBtn.classList.add("recording");
         micTip.textContent = "Recording... Release button to send";
+        if (shouldStopAfterRecordingStarts) stopRecording();
     } catch (err) {
         isStartingRecording = false;
+        shouldStopAfterRecordingStarts = false;
         console.error("Microphone access failed:", err);
         alert("Microphone access failed: " + err.message);
     }
@@ -365,6 +480,10 @@ async function startRecording() {
 
 function stopRecording() {
     try {
+        if (isStartingRecording) {
+            shouldStopAfterRecordingStarts = true;
+            return;
+        }
         if (mediaRecorder && isRecording) {
             mediaRecorder.stop();
             mediaRecorder.stream.getTracks().forEach((t) => t.stop());

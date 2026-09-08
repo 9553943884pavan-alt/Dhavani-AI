@@ -9,7 +9,19 @@ from dotenv import load_dotenv
 load_dotenv()
 
 # --- API Keys (loaded from .env) ---
-RIME_API_KEY = os.getenv("RIME_API_KEY", "")
+RIME_API_KEY_PRIMARY = os.getenv(
+    "RIME_API_KEY_PRIMARY",
+    os.getenv("RIME_API_KEY_Primary", ""),
+).strip()
+RIME_API_KEY_SECONDARY = os.getenv(
+    "RIME_API_KEY_SECONDARY",
+    os.getenv("RIME_API_KEY_Secondary", ""),
+).strip()
+RIME_API_KEYS = tuple(
+    key for key in (RIME_API_KEY_PRIMARY, RIME_API_KEY_SECONDARY) if key
+)
+# Backward-compatible alias used by existing code. Primary is preferred.
+RIME_API_KEY = RIME_API_KEYS[0] if RIME_API_KEYS else os.getenv("RIME_API_KEY", "").strip()
 GROQ_API_KEY = os.getenv("GROQ_API_KEY", "")
 
 # --- Rime TTS Configuration ---
@@ -56,7 +68,7 @@ def validate_configuration() -> None:
     missing = [
         name
         for name, value in (
-            ("RIME_API_KEY", RIME_API_KEY),
+            ("RIME_API_KEY_PRIMARY or RIME_API_KEY_SECONDARY", RIME_API_KEY),
             ("GROQ_API_KEY", GROQ_API_KEY),
         )
         if not value.strip()

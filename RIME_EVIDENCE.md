@@ -9,7 +9,7 @@
 
 ## 1. The One-Sentence Claim
 
-> Streaming LLM tokens directly into Rime's WebSocket API cuts controlled TTS-stage first-audio latency by **73.6% at P50** and **76.5% at P95**, while reducing the LLM-to-first-audio end-to-end pipeline proxy by **46.1% at P50** and **31.9% at P95**.
+> Streaming LLM tokens directly into Rime's WebSocket API cuts controlled TTS-stage first-audio latency by **69.7% at P50** and **61.3% at P95**, while reducing the LLM-to-first-audio end-to-end pipeline proxy by **38.3% at P50** and **28.5% at P95**.
 
 ---
 
@@ -61,10 +61,10 @@ python scripts/run_benchmark.py
 
 | Metric | Naive Mode (HTTP Full Buffering) | Optimized Mode (Rime WS Token Streaming) | Absolute Reduction | Relative Improvement |
 |---|---|---|---|---|
-| **TTS First Audio Latency Median (P50)** | **1,702.0 ms** | **449.7 ms** | **1,252.4 ms** | **73.6% Reduction** ✅ |
-| **TTS First Audio Latency P95 Tail** | **2,865.2 ms** | **672.1 ms** | **2,193.1 ms** | **76.5% Reduction** ✅ |
-| **End-to-End Pipeline Proxy Median (P50)** | **3,114.5 ms** | **1,679.8 ms** | **1,434.7 ms** | **46.1% Reduction** |
-| **End-to-End Pipeline Proxy P95 Tail** | **4,696.9 ms** | **3,199.5 ms** | **1,497.4 ms** | **31.9% Reduction** |
+| **TTS First Audio Latency Median (P50)** | **1,717.5 ms** | **520.6 ms** | **1,197.0 ms** | **69.7% Reduction** ✅ |
+| **TTS First Audio Latency P95 Tail** | **1,875.8 ms** | **726.2 ms** | **1,149.6 ms** | **61.3% Reduction** ✅ |
+| **End-to-End Pipeline Proxy Median (P50)** | **3,232.0 ms** | **1,995.6 ms** | **1,236.4 ms** | **38.3% Reduction** |
+| **End-to-End Pipeline Proxy P95 Tail** | **3,636.2 ms** | **2,601.3 ms** | **1,034.9 ms** | **28.5% Reduction** |
 
 The pipeline proxy is calculated per query as:
 
@@ -76,19 +76,19 @@ It is useful for showing the system-level effect of the TTS change, but it shoul
 
 | # | Query | Shared LLM | Naive TTS | Optimized TTS | Naive Pipeline Proxy | Optimized Pipeline Proxy | Proxy Saved | Reduction |
 |---|---|---|---|---|---|---|---|---|
-| 1 | Speed of light | 1,917.8 ms | 1,750.5 ms | 827.6 ms | 3,668.3 ms | 2,745.4 ms | 923.0 ms | **25.2%** |
-| 2 | Focus tips | 1,006.4 ms | 3,542.2 ms | 444.6 ms | 4,548.5 ms | 1,451.0 ms | 3,097.6 ms | **68.1%** |
-| 3 | Autumn leaves | 1,258.3 ms | 1,613.5 ms | 475.3 ms | 2,871.8 ms | 1,733.6 ms | 1,138.2 ms | **39.6%** |
-| 4 | Jet engine | 1,209.3 ms | 1,473.2 ms | 426.2 ms | 2,682.5 ms | 1,635.5 ms | 1,047.1 ms | **39.0%** |
-| 5 | Sync vs async | 3,143.0 ms | 1,675.4 ms | 428.1 ms | 4,818.4 ms | 3,571.1 ms | 1,247.3 ms | **25.9%** |
-| 6 | Immune memory | 933.5 ms | 1,688.5 ms | 480.3 ms | 2,622.0 ms | 1,413.8 ms | 1,208.2 ms | **46.1%** |
-| 7 | Healthy breakfast | 1,291.3 ms | 2,037.8 ms | 432.7 ms | 3,329.1 ms | 1,724.0 ms | 1,605.1 ms | **48.2%** |
-| 8 | General relativity | 830.8 ms | 1,598.7 ms | 421.5 ms | 2,429.4 ms | 1,252.3 ms | 1,177.2 ms | **48.5%** |
-| 9 | Quantum computing | 1,091.9 ms | 2,031.7 ms | 482.0 ms | 3,123.6 ms | 1,573.9 ms | 1,549.7 ms | **49.6%** |
-| 10 | Space exploration | 1,389.8 ms | 1,715.5 ms | 454.7 ms | 3,105.4 ms | 1,844.6 ms | 1,260.8 ms | **40.6%** |
+| 1 | Speed of light | 1,829.4 ms | 1,677.8 ms | 797.1 ms | 3,507.2 ms | 2,626.6 ms | 880.7 ms | **25.1%** |
+| 2 | Focus tips | 1,275.5 ms | 1,757.4 ms | 505.2 ms | 3,032.9 ms | 1,780.7 ms | 1,252.2 ms | **41.3%** |
+| 3 | Autumn leaves | 1,431.4 ms | 1,826.4 ms | 540.3 ms | 3,257.8 ms | 1,971.8 ms | 1,286.1 ms | **39.5%** |
+| 4 | Jet engine | 1,549.7 ms | 1,899.5 ms | 504.2 ms | 3,449.2 ms | 2,053.9 ms | 1,395.3 ms | **40.5%** |
+| 5 | Sync vs async | 1,386.8 ms | 1,701.4 ms | 402.3 ms | 3,088.2 ms | 1,789.1 ms | 1,299.0 ms | **42.1%** |
+| 6 | Immune memory | 1,250.6 ms | 1,599.7 ms | 523.0 ms | 2,850.3 ms | 1,773.5 ms | 1,076.8 ms | **37.8%** |
+| 7 | Healthy breakfast | 1,761.8 ms | 1,846.9 ms | 520.7 ms | 3,608.7 ms | 2,282.5 ms | 1,326.2 ms | **36.7%** |
+| 8 | General relativity | 1,499.1 ms | 1,707.1 ms | 520.4 ms | 3,206.1 ms | 2,019.4 ms | 1,186.7 ms | **37.0%** |
+| 9 | Quantum computing | 1,191.9 ms | 1,689.5 ms | 509.9 ms | 2,881.3 ms | 1,701.8 ms | 1,179.5 ms | **40.9%** |
+| 10 | Space exploration | 1,930.7 ms | 1,728.0 ms | 639.6 ms | 3,658.7 ms | 2,570.3 ms | 1,088.4 ms | **29.7%** |
 
 ### Stress Test Case (Query #10)
-When generating a long, detailed paragraph (Query #10, 68 words), the LLM-to-first-audio pipeline proxy is **3,105.4 ms** for naive mode versus **1,844.6 ms** for optimized mode. That saves **1,260.8 ms**, a **40.6% proxy reduction**; the isolated TTS reduction is **73.5%**.
+When generating a long, detailed paragraph (Query #10, 64 words), the LLM-to-first-audio pipeline proxy is **3,658.7 ms** for naive mode versus **2,570.3 ms** for optimized mode. That saves **1,088.4 ms**, a **29.7% proxy reduction**; the isolated TTS reduction is **63.0%**.
 
 ---
 
@@ -102,7 +102,7 @@ Rime's published benchmark on an H100 SXM (zero network overhead):
 | `coda` | **96 ms** | **98 ms** |
 
 ### Gap Analysis & Ground Truth Alignment
-- In our live remote benchmark over public internet from India to Rime's Virginia datacenter, Rime WebSocket streaming delivered first audio chunks in **~420–830 ms** (P50: **449.7 ms**; fastest: **421.5 ms**).
+- In our live remote benchmark over public internet from India to Rime's Virginia datacenter, Rime WebSocket streaming delivered first audio chunks in **~402–640 ms** (P50: **520.6 ms**; fastest: **402.3 ms**).
 - When subtracting network round-trip time (RTT ~ 360–380 ms across transatlantic undersea fiber), Rime's actual internal synthesis time aligns directly with the **~37–50 ms** published specification.
 
 ---

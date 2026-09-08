@@ -10,7 +10,7 @@
 
 ## 1. The One-Sentence Claim
 
-> Streaming LLM tokens directly into Rime's WebSocket API cuts controlled TTS-stage first-audio latency by **73.6% at P50** and **76.5% at P95**.
+> Streaming LLM tokens directly into Rime's WebSocket API cuts controlled TTS-stage first-audio latency by **69.7% at P50** and **61.3% at P95**, while reducing the LLM-to-first-audio pipeline proxy by **38.3% at P50** and **28.5% at P95**.
 
 ---
 
@@ -45,8 +45,8 @@ Human conversational turn-taking happens naturally within **200–500 ms**. When
       ▼ (Naive Baseline)              ▼ (Optimized Streaming)        │
 [Phase 2: LLM Full Response]    [Phase 3: LLM Token Stream]          │
   Waits for full paragraph        Streams tokens via Groq LPU        │
-  Measured: ~1,228 - 1,468 ms     Token stream begins                │
-  (mean ~1,291 ms via benchmark)  T2 dispatch: 1,228 - 1,468 ms      │
+  Measured: ~1,192 - 1,931 ms     Token stream begins                │
+  (latest live benchmark)         T2 dispatch: measured per query    │
       │                               │                              │
       ▼                               ▼ (Concurrent WebSocket pipe) │
 [Phase 2: Rime HTTP TTS]        [Phase 4: Rime WS incremental]       │
@@ -83,8 +83,10 @@ Full repeatable benchmark methodology, CSV datasets, and query-by-query traces a
 
 | Metric | Naive Mode (HTTP Full Buffering) | Optimized Mode (Rime WS Token Streaming) | Absolute Reduction | Relative Improvement |
 |---|---|---|---|---|
-| **TTS First Audio Latency Median (P50)** | **1,702.0 ms** | **449.7 ms** | **1,252.4 ms** | **73.6% Reduction** ✅ |
-| **TTS First Audio Latency P95 Tail** | **2,865.2 ms** | **672.1 ms** | **2,193.1 ms** | **76.5% Reduction** ✅ |
+| **TTS First Audio Latency Median (P50)** | **1,717.5 ms** | **520.6 ms** | **1,197.0 ms** | **69.7% Reduction** ✅ |
+| **TTS First Audio Latency P95 Tail** | **1,875.8 ms** | **726.2 ms** | **1,149.6 ms** | **61.3% Reduction** ✅ |
+| **End-to-End Pipeline Proxy Median (P50)** | **3,232.0 ms** | **1,995.6 ms** | **1,236.4 ms** | **38.3% Reduction** |
+| **End-to-End Pipeline Proxy P95 Tail** | **3,636.2 ms** | **2,601.3 ms** | **1,034.9 ms** | **28.5% Reduction** |
 
 - **Isolated Delivery Mechanism:** LLM completions are generated and frozen once per query, feeding identical text to both TTS paths to eliminate sampling variance as a confound.
 - **Scope:** This benchmark reports TTS dispatch-to-first-audio latency. It does not claim an end-to-end STT-to-audio measurement.
@@ -98,7 +100,7 @@ Full repeatable benchmark methodology, CSV datasets, and query-by-query traces a
 
 ### Prerequisites
 - Python 3.10+ (tested on Python 3.12)
-- Rime API Key (`RIME_API_KEY`)
+- Rime API key (`RIME_API_KEY_PRIMARY`); optional rescue key (`RIME_API_KEY_SECONDARY`)
 - Groq API Key (`GROQ_API_KEY`)
 
 ### Installation
@@ -112,7 +114,7 @@ Full repeatable benchmark methodology, CSV datasets, and query-by-query traces a
 2. **Configure environment:**
    ```bash
    cp .env.example .env
-   # Edit .env and enter your actual RIME_API_KEY and GROQ_API_KEY
+  # Edit .env and enter your actual Rime and Groq API keys
    ```
 
 3. **Install dependencies:**

@@ -26,7 +26,7 @@ from backend.stt import transcribe_async
 from backend.llm import stream_completion, get_full_completion
 from backend.tts import synthesize_naive, synthesize_streaming
 
-app = FastAPI(title="Rime Voice Latency Demo", version="1.0.0")
+app = FastAPI(title="Dhvani AI", version="1.0.0")
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 FRONTEND_DIR = BASE_DIR / "frontend"

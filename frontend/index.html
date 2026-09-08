@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Voice Latency Demo — Rime Hackathon</title>
+    <title>Dhvani AI — Real-time voice intelligence</title>
     <link rel="stylesheet" href="/static/style.css">
 </head>
 <body>
@@ -11,22 +11,25 @@
         <!-- Header -->
         <header class="header">
             <div class="badge-row">
-                <span class="badge rime">TTS: Rime Mist v3 (Astra)</span>
-                <span class="badge groq">LLM: Groq LPU</span>
-                <span class="badge groq">STT: Whisper Large v3 Turbo</span>
+                <span class="brand-mark">Dhvani AI</span>
+                <span class="badge rime">Rime Mist v3</span>
+                <span class="badge groq">Groq LPU</span>
+                <span class="badge groq">Whisper STT</span>
                 <span id="connectionBadge" class="badge">Connecting...</span>
             </div>
-            <h1>Voice Latency Engineering Demo</h1>
+            <p class="eyebrow">REAL-TIME VOICE INTELLIGENCE</p>
+            <h1>Hear the answer<br><em>before the pause.</em></h1>
             <p>
-                Demonstrating that streaming LLM tokens directly into Rime's WebSocket API cuts perceived response time (Time-to-First-Audio) by over 50% compared to traditional full-response buffering.
+                Dhvani means voice. Ask a question, watch the response arrive, and measure the moment your assistant starts speaking.
             </p>
         </header>
 
         <!-- Mode Switcher Banner -->
         <div class="mode-banner">
             <div class="mode-info">
-                <div class="mode-title" id="modeTitle">Optimized Pipeline (Incremental WebSocket Streaming)</div>
-                <div class="mode-desc" id="modeDesc">LLM tokens stream directly into Rime Mist v3 over WebSocket. Audio starts on the first word.</div>
+                <div class="mode-kicker">PIPELINE MODE</div>
+                <div class="mode-title" id="modeTitle">Optimized streaming</div>
+                <div class="mode-desc" id="modeDesc">Tokens travel directly into speech, so audio can begin on the first word.</div>
             </div>
             <div class="toggle-group">
                 <button id="optBtn" class="toggle-btn active optimized">Optimized (Streaming)</button>
@@ -73,13 +76,17 @@
 
         <!-- Push to Talk & Input Hub -->
         <div class="card interaction-area">
-            <button id="micBtn" class="mic-btn" title="Hold to speak">
+            <div class="control-heading">
+                <span class="section-kicker">TRY IT LIVE</span>
+                <h2>Speak naturally. We’ll handle the silence.</h2>
+            </div>
+            <button id="micBtn" class="mic-btn" title="Hold to speak" aria-label="Hold to speak">
                 <svg class="mic-icon" viewBox="0 0 24 24">
                     <path d="M12 14c1.66 0 3-1.34 3-3V5c0-1.66-1.34-3-3-3S9 3.34 9 5v6c0 1.66 1.34 3 3 3z"/>
                     <path d="M17 11c0 2.76-2.24 5-5 5s-5-2.24-5-5H5c0 3.53 2.61 6.43 6 6.92V21h2v-3.08c3.39-.49 6-3.39 6-6.92h-2z"/>
                 </svg>
             </button>
-            <div id="micTip" class="interaction-tip">Hold button to speak, or use text presets below</div>
+            <div id="micTip" class="interaction-tip">Hold to speak</div>
 
             <!-- Audio Playback Status -->
             <div class="audio-status">
@@ -90,16 +97,16 @@
             <!-- Quick Text Input -->
             <div class="quick-test-row">
                 <input id="textInput" type="text" class="text-input" placeholder="Type a prompt or test question (e.g. 'Explain quantum computing in two sentences')...">
-                <button id="sendBtn" class="send-btn">Send</button>
+                <button id="sendBtn" class="send-btn"><span>Send prompt</span> <span aria-hidden="true">↗</span></button>
             </div>
 
             <!-- Preset Queries (including Hackathon stress test) -->
             <div class="presets-container">
-                <span style="font-size: 11px; color: var(--text-muted); font-weight: 600;">Presets:</span>
+                <span class="preset-label">Try a prompt</span>
                 <span class="preset-chip" onclick="selectPreset('What is the capital of France and why is it famous?')">Capital of France</span>
                 <span class="preset-chip" onclick="selectPreset('Give me 3 quick tips for better public speaking.')">Public Speaking</span>
                 <span class="preset-chip" onclick="selectPreset('Why does voice latency matter in medical or emergency dispatch applications?')">Emergency Voice</span>
-                <span class="preset-chip" style="border-color: rgba(244, 63, 94, 0.4); color: #fda4af;" onclick="selectPreset('Write a comprehensive 4-sentence paragraph describing the history of artificial intelligence and deep neural networks.')">⚡ Stress Test: Long Response</span>
+                <span class="preset-chip stress" onclick="selectPreset('Write a comprehensive 4-sentence paragraph describing the history of artificial intelligence and deep neural networks.')">Stress test</span>
             </div>
         </div>
 
@@ -121,7 +128,7 @@
 
         <!-- Footer -->
         <footer class="footer">
-            Rime Hackathon Submission • Hard Voice Problem: Perceived Response Time • Rime Mist v3 & Groq LPU
+            Dhvani AI · Perceived response time · Built with Rime and Groq
         </footer>
     </div>
 

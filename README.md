@@ -1,8 +1,25 @@
-# Voice Latency Engineering Demo — Rime Hackathon
+# Dhvani AI — Real-time voice intelligence
 
 **Track:** Rime Hackathon Challenge — Hard Voice Problem: **Perceived Response Time**  
 **Active Speech Provider:** Rime (`mistv3`, speaker: `astra`)  
 **LLM & STT Provider:** Groq LPU (`openai/gpt-oss-20b`, `whisper-large-v3-turbo`)  
+
+## Folder Structure
+
+```text
+Claude_code/
+├── backend/                  # FastAPI app and STT, LLM, and TTS pipeline
+├── frontend/                 # Dhvani AI browser interface
+├── samples/                  # Local audio samples used during testing
+├── scripts/                  # Component tests and benchmark runners
+├── demo_video.mp4            # Product walkthrough video (local, ignored)
+├── benchmark_results.csv     # Recorded latency measurements
+├── RIME_EVIDENCE.md          # Benchmark methodology and evidence
+├── requirements.txt          # Python dependencies
+└── README.md                 # Project documentation
+```
+
+The local `demo_video.mp4` walkthrough is intentionally excluded from version control by `.gitignore` because it is a generated presentation artifact.
 
 > **Note on Active Model:** `backend/config.py` defaults to `os.getenv("GROQ_LLM_MODEL", "llama-3.1-8b-instant")`, but the active runtime environment uses `openai/gpt-oss-20b` (configured via `.env`) because Groq returns 404 for `llama-3.1-8b-instant` on this account tier. All empirical benchmarks and evidence files reflect `openai/gpt-oss-20b`.
 

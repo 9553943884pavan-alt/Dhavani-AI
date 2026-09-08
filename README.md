@@ -12,14 +12,15 @@ Claude_code/
 ├── frontend/                 # Dhvani AI browser interface
 ├── samples/                  # Local audio samples used during testing
 ├── scripts/                  # Component tests and benchmark runners
-├── demo_video.mp4            # Product walkthrough video (local, ignored)
 ├── benchmark_results.csv     # Recorded latency measurements
 ├── RIME_EVIDENCE.md          # Benchmark methodology and evidence
 ├── requirements.txt          # Python dependencies
 └── README.md                 # Project documentation
 ```
 
-The local `demo_video.mp4` walkthrough is intentionally excluded from version control by `.gitignore` because it is a generated presentation artifact.
+## Demo Video
+
+[Watch the Dhvani AI demo video on YouTube](https://youtu.be/RfRnSovGcHQ)
 
 > **Note on Active Model:** `backend/config.py` defaults to `os.getenv("GROQ_LLM_MODEL", "llama-3.1-8b-instant")`, but the active runtime environment uses `openai/gpt-oss-20b` (configured via `.env`) because Groq returns 404 for `llama-3.1-8b-instant` on this account tier. All empirical benchmarks and evidence files reflect `openai/gpt-oss-20b`.
 

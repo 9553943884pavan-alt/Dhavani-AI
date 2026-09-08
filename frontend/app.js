@@ -10,6 +10,8 @@ let currentMode = "optimized"; // "optimized" or "naive"
 let mediaRecorder = null;
 let audioChunks = [];
 let isRecording = false;
+let isStartingRecording = false;
+let isPipelineActive = false;
 
 // Audio playback state (accumulated chunks -> Blob -> HTMLAudioElement)
 let receivedAudioChunks = []; // Array of Uint8Arrays accumulating audio bytes for current response
@@ -60,6 +62,23 @@ function stopCurrentAudio() {
     }
 }
 
+function primeAudioPlayback() {
+    try {
+        const audio = new Audio();
+        audio.muted = true;
+        audio.src = "data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEARKwAAESsAAABAAgAZGF0YQAAAAA=";
+        const playPromise = audio.play();
+        if (playPromise !== undefined) {
+            playPromise.catch(() => {}).finally(() => {
+                audio.pause();
+                audio.removeAttribute("src");
+            });
+        }
+    } catch (err) {
+        console.warn("Audio playback could not be primed:", err);
+    }
+}
+
 // Accumulate received audio chunk
 function handleAudioChunk(arrayBuffer) {
     try {
@@ -72,6 +91,8 @@ function handleAudioChunk(arrayBuffer) {
 
 // Play accumulated audio chunks when "done" event is received
 function playAccumulatedAudio() {
+    let audioUrl = null;
+    let audio = null;
     try {
         if (!receivedAudioChunks || receivedAudioChunks.length === 0) {
             console.warn("No audio chunks accumulated to play.");
@@ -87,9 +108,9 @@ function playAccumulatedAudio() {
 
         // Concatenate all accumulated Uint8Array chunks into a single Blob with type "audio/mpeg"
         const audioBlob = new Blob(receivedAudioChunks, { type: "audio/mpeg" });
-        const audioUrl = URL.createObjectURL(audioBlob);
+        audioUrl = URL.createObjectURL(audioBlob);
 
-        const audio = new Audio(audioUrl);
+        audio = new Audio(audioUrl);
         currentAudioElement = audio;
 
         audio.onended = () => {
@@ -123,12 +144,18 @@ function playAccumulatedAudio() {
         if (playPromise !== undefined) {
             playPromise.catch((err) => {
                 console.error("audio.play() rejected:", err);
+                URL.revokeObjectURL(audioUrl);
+                audio.removeAttribute("src");
+                if (currentAudioElement === audio) currentAudioElement = null;
                 audioStatusDot.classList.remove("playing");
                 audioStatusText.textContent = "Audio playback failed";
             });
         }
     } catch (err) {
         console.error("Fatal error during audio accumulation or playback:", err);
+        if (audioUrl) URL.revokeObjectURL(audioUrl);
+        if (audio) audio.removeAttribute("src");
+        if (currentAudioElement === audio) currentAudioElement = null;
         audioStatusDot.classList.remove("playing");
         audioStatusText.textContent = "Audio playback error";
     }
@@ -154,6 +181,7 @@ function initWebSocket() {
 
         ws.onclose = () => {
             try {
+                isPipelineActive = false;
                 document.getElementById("connectionBadge").textContent = "Reconnecting...";
                 document.getElementById("connectionBadge").className = "badge";
                 setTimeout(initWebSocket, 2000);
@@ -245,11 +273,14 @@ function handleServerMessage(msg) {
             updateComparisonHUD(t3);
             streamingCursor.style.display = "none";
         } else if (msg.type === "done") {
+            isPipelineActive = false;
             streamingCursor.style.display = "none";
             playAccumulatedAudio();
         } else if (msg.type === "error") {
+            isPipelineActive = false;
             streamingCursor.style.display = "none";
             console.error("Server error message received:", msg.message);
+            if (receivedAudioChunks.length > 0) playAccumulatedAudio();
             alert("Server message: " + msg.message);
         }
     } catch (err) {
@@ -291,6 +322,8 @@ function updateComparisonHUD(newT3) {
 // Push-to-talk Mic Controls
 async function startRecording() {
     try {
+        if (isPipelineActive || currentAudioElement || isRecording || isStartingRecording) return;
+        isStartingRecording = true;
         const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
         audioChunks = [];
         mediaRecorder = new MediaRecorder(stream, { mimeType: "audio/webm" });
@@ -308,6 +341,7 @@ async function startRecording() {
                 t0Val.textContent = "0 ms (Audio Sent)";
 
                 if (ws && ws.readyState === WebSocket.OPEN) {
+                    isPipelineActive = true;
                     ws.send(arrayBuffer);
                 } else {
                     console.error("WebSocket is not open. Cannot send audio recording.");
@@ -319,9 +353,11 @@ async function startRecording() {
 
         mediaRecorder.start();
         isRecording = true;
+        isStartingRecording = false;
         micBtn.classList.add("recording");
         micTip.textContent = "Recording... Release button to send";
     } catch (err) {
+        isStartingRecording = false;
         console.error("Microphone access failed:", err);
         alert("Microphone access failed: " + err.message);
     }
@@ -341,16 +377,15 @@ function stopRecording() {
     }
 }
 
-micBtn.addEventListener("mousedown", startRecording);
-micBtn.addEventListener("mouseup", stopRecording);
-micBtn.addEventListener("touchstart", (e) => { e.preventDefault(); startRecording(); });
-micBtn.addEventListener("touchend", (e) => { e.preventDefault(); stopRecording(); });
+micBtn.addEventListener("pointerdown", (e) => { e.preventDefault(); primeAudioPlayback(); startRecording(); });
+micBtn.addEventListener("pointerup", (e) => { e.preventDefault(); stopRecording(); });
+micBtn.addEventListener("pointercancel", stopRecording);
 
 // Quick Text Submission
 function submitTextMessage(text) {
     try {
         const query = text.trim();
-        if (!query) return;
+        if (!query || isPipelineActive || currentAudioElement) return;
 
         resetUI();
         userTranscriptEl.textContent = query;
@@ -358,6 +393,7 @@ function submitTextMessage(text) {
         t1Val.textContent = "0 ms (Direct Text)";
 
         if (ws && ws.readyState === WebSocket.OPEN) {
+            isPipelineActive = true;
             ws.send(JSON.stringify({
                 action: "text",
                 text: query,
@@ -372,12 +408,14 @@ function submitTextMessage(text) {
 }
 
 sendBtn.addEventListener("click", () => {
+    primeAudioPlayback();
     submitTextMessage(textInput.value);
     textInput.value = "";
 });
 
 textInput.addEventListener("keydown", (e) => {
     if (e.key === "Enter") {
+        primeAudioPlayback();
         submitTextMessage(textInput.value);
         textInput.value = "";
     }
@@ -385,6 +423,7 @@ textInput.addEventListener("keydown", (e) => {
 
 // Presets
 window.selectPreset = function (text) {
+    primeAudioPlayback();
     submitTextMessage(text);
 };
 

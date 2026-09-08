@@ -5,7 +5,7 @@ LLM streaming using Groq (Llama 3.1 8B Instant).
 import time
 import asyncio
 from typing import AsyncGenerator, Optional
-from groq import AsyncGroq
+from groq import AsyncGroq, RateLimitError
 from backend.config import GROQ_API_KEY, GROQ_LLM_MODEL
 
 
@@ -40,29 +40,28 @@ async def stream_completion(
         {"role": "user", "content": prompt},
     ]
 
-    for attempt in range(max_retries):
-        try:
-            stream = await client.chat.completions.create(
-                model=selected_model,
-                messages=messages,
-                stream=True,
-                temperature=0.7,
-                max_tokens=256,
-            )
-            async for chunk in stream:
-                content = chunk.choices[0].delta.content
-                if content:
-                    yield content
-            return
+    try:
+        for attempt in range(max_retries):
+            try:
+                stream = await client.chat.completions.create(
+                    model=selected_model,
+                    messages=messages,
+                    stream=True,
+                    temperature=0.7,
+                    max_tokens=256,
+                )
+                async for chunk in stream:
+                    content = chunk.choices[0].delta.content
+                    if content:
+                        yield content
+                return
 
-        except Exception as e:
-            # Check for 429 rate limit
-            is_rate_limit = "429" in str(e) or "rate_limit" in str(e).lower()
-            if is_rate_limit and attempt < max_retries - 1:
-                wait_seconds = 2 ** (attempt + 1)
-                await asyncio.sleep(wait_seconds)
-                continue
-            raise
+            except RateLimitError:
+                if attempt >= max_retries - 1:
+                    raise
+                await asyncio.sleep(2 ** (attempt + 1))
+    finally:
+        await client.close()
 
 
 async def get_full_completion(
@@ -82,19 +81,27 @@ async def get_full_completion(
         {"role": "user", "content": prompt},
     ]
 
-    for attempt in range(3):
-        t0 = time.perf_counter()
-        response = await client.chat.completions.create(
-            model=selected_model,
-            messages=messages,
-            stream=False,
-            temperature=0.7,
-            max_tokens=384,
-        )
-        elapsed_ms = (time.perf_counter() - t0) * 1000
-        text = response.choices[0].message.content or ""
-        if text.strip():
-            return text.strip(), elapsed_ms
-        await asyncio.sleep(1.0)
+    try:
+        for attempt in range(3):
+            try:
+                t0 = time.perf_counter()
+                response = await client.chat.completions.create(
+                    model=selected_model,
+                    messages=messages,
+                    stream=False,
+                    temperature=0.7,
+                    max_tokens=384,
+                )
+                elapsed_ms = (time.perf_counter() - t0) * 1000
+                text = response.choices[0].message.content or ""
+                if text.strip():
+                    return text.strip(), elapsed_ms
+                await asyncio.sleep(1.0)
+            except RateLimitError:
+                if attempt >= 2:
+                    raise
+                await asyncio.sleep(2 ** (attempt + 1))
 
-    return text.strip(), elapsed_ms
+        return text.strip(), elapsed_ms
+    finally:
+        await client.close()

@@ -225,32 +225,34 @@ async def run_all_benchmarks():
 
     for idx, q in enumerate(QUERIES, 1):
         print(f"\n[{idx}/{len(QUERIES)}] Query: \"{q[:55]}...\"")
+        try:
+            print("  Generating LLM response (shared)...", end="", flush=True)
+            frozen_text, llm_ms = await generate_llm_text(q)
+            print(f" Done. {llm_ms:.0f} ms | {len(frozen_text.split())} words")
+            print(f"  LLM text: \"{frozen_text[:70].rstrip()}{'...' if len(frozen_text) > 70 else ''}\"")
 
-        # --- Step 0: Generate LLM text once ---
-        print("  Generating LLM response (shared)...", end="", flush=True)
-        frozen_text, llm_ms = await generate_llm_text(q)
-        print(f" Done. {llm_ms:.0f} ms | {len(frozen_text.split())} words")
-        print(f"  LLM text: \"{frozen_text[:70].rstrip()}{'...' if len(frozen_text) > 70 else ''}\"")
+            await asyncio.sleep(0.5)
 
-        await asyncio.sleep(0.5)  # brief cooldown before TTS calls
+            print("  Naive TTS (HTTP POST)...", end="", flush=True)
+            naive_res = await run_naive_tts(q, frozen_text, llm_ms)
+            print(
+                f" Done. TTS TTFB: {naive_res['tts_first_chunk_ms']:.1f} ms"
+                f" | Total TTS: {naive_res['total_tts_ms']:.1f} ms"
+            )
 
-        # --- Step 1a: Naive TTS ---
-        print("  Naive TTS (HTTP POST)...", end="", flush=True)
-        naive_res = await run_naive_tts(q, frozen_text, llm_ms)
-        print(
-            f" Done. TTS TTFB: {naive_res['tts_first_chunk_ms']:.1f} ms"
-            f" | Total TTS: {naive_res['total_tts_ms']:.1f} ms"
-        )
+            await asyncio.sleep(0.5)
 
-        await asyncio.sleep(0.5)
-
-        # --- Step 1b: Optimized TTS ---
-        print("  Optimized TTS (Rime WS streaming)...", end="", flush=True)
-        opt_res = await run_optimized_tts(q, frozen_text, llm_ms)
-        print(
-            f" Done. TTS_FIRST_CHUNK: {opt_res['tts_first_chunk_ms']:.1f} ms"
-            f" | Total TTS: {opt_res['total_tts_ms']:.1f} ms"
-        )
+            print("  Optimized TTS (Rime WS streaming)...", end="", flush=True)
+            opt_res = await run_optimized_tts(q, frozen_text, llm_ms)
+            print(
+                f" Done. TTS_FIRST_CHUNK: {opt_res['tts_first_chunk_ms']:.1f} ms"
+                f" | Total TTS: {opt_res['total_tts_ms']:.1f} ms"
+            )
+        except Exception as exc:
+            print(f"\n  [ERROR] Query {idx} failed: {exc}")
+            if results:
+                save_csv(results)
+            continue
 
         # Per-query savings (TTS segment only — LLM already controlled out)
         tts_savings = naive_res["tts_first_chunk_ms"] - opt_res["tts_first_chunk_ms"]
@@ -274,10 +276,16 @@ async def run_all_benchmarks():
         }
         results.append(query_record)
 
+        save_csv(results)
+
         await asyncio.sleep(1.0)  # rate-limit cooldown between queries
 
-    save_csv(results)
-    summarize_and_plot(results)
+    if results:
+        save_csv(results)
+        if len(results) == len(QUERIES):
+            summarize_and_plot(results)
+        else:
+            print(f"\n[WARN] Saved {len(results)}/{len(QUERIES)} records; chart generation skipped for partial results.")
 
 
 # ---------------------------------------------------------------------------
@@ -437,7 +445,7 @@ def summarize_and_plot(records: list[dict]):
     ax2.grid(True, linestyle="--", alpha=0.2)
 
     plt.suptitle(
-        f"Rime TTS (mistv3, {RIME_SPEAKER}) — Controlled Latency Benchmark\n"
+        f"Rime TTS ({RIME_MODEL_ID}, {RIME_SPEAKER}) — Controlled Latency Benchmark\n"
         f"LLM response generated once per query; identical text fed to both TTS paths.\n"
         f"P50 reduction: {p50_reduction:.1f}%   P95 reduction: {p95_reduction:.1f}%",
         fontsize=13, fontweight="bold", y=1.04, color="#f8fafc",

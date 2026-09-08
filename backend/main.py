@@ -20,6 +20,7 @@ from backend.config import (
     RIME_WS_FULL_URL,
     GROQ_STT_MODEL,
     GROQ_LLM_MODEL,
+    validate_configuration,
 )
 from backend.stt import transcribe_async
 from backend.llm import stream_completion, get_full_completion
@@ -31,6 +32,11 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 FRONTEND_DIR = BASE_DIR / "frontend"
 
 app.mount("/static", StaticFiles(directory=str(FRONTEND_DIR)), name="static")
+
+
+@app.on_event("startup")
+async def validate_startup_configuration():
+    validate_configuration()
 
 
 @app.get("/health")
@@ -164,7 +170,7 @@ async def _process_pipeline(
                     await websocket.send_json({"type": "llm_delta", "delta": token})
                     yield token
             except Exception as e:
-                await websocket.send_json({"type": "error", "message": f"LLM error: {e}"})
+                raise RuntimeError(f"LLM error: {e}") from e
 
         try:
             async for audio_chunk in synthesize_streaming(_token_pipe(), metrics=tts_metrics):

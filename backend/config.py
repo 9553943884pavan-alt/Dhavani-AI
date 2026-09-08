@@ -49,3 +49,19 @@ GROQ_LLM_MODEL = os.getenv("GROQ_LLM_MODEL", "llama-3.1-8b-instant")
 # --- Server ---
 HOST = "0.0.0.0"
 PORT = 8000
+
+
+def validate_configuration() -> None:
+    """Fail during application startup when required provider keys are absent."""
+    missing = [
+        name
+        for name, value in (
+            ("RIME_API_KEY", RIME_API_KEY),
+            ("GROQ_API_KEY", GROQ_API_KEY),
+        )
+        if not value.strip()
+    ]
+    if missing:
+        raise RuntimeError(
+            "Missing required environment variables: " + ", ".join(missing)
+        )

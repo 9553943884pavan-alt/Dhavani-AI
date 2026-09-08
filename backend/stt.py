@@ -6,7 +6,7 @@ Includes automatic audio format detection and 429 retry/backoff.
 import io
 import time
 import asyncio
-from groq import Groq
+from groq import Groq, RateLimitError
 from backend.config import GROQ_API_KEY, GROQ_STT_MODEL
 
 
@@ -55,27 +55,25 @@ def transcribe(
 
     audio_file = (fname, io.BytesIO(audio_bytes), mime)
 
-    for attempt in range(max_retries):
-        try:
-            t0 = time.perf_counter()
-            response = client.audio.transcriptions.create(
-                file=audio_file,
-                model=GROQ_STT_MODEL,
-                temperature=0.0,
-            )
-            elapsed_ms = (time.perf_counter() - t0) * 1000
-            return response.text.strip(), elapsed_ms
+    try:
+        for attempt in range(max_retries):
+            try:
+                t0 = time.perf_counter()
+                response = client.audio.transcriptions.create(
+                    file=audio_file,
+                    model=GROQ_STT_MODEL,
+                    temperature=0.0,
+                )
+                elapsed_ms = (time.perf_counter() - t0) * 1000
+                return response.text.strip(), elapsed_ms
 
-        except Exception as e:
-            is_rate_limit = "429" in str(e) or "rate_limit" in str(e).lower()
-            if is_rate_limit and attempt < max_retries - 1:
-                # Extract retry-after if present
-                wait_sec = 2 ** (attempt + 1)
-                time.sleep(wait_sec)
-                # Reset BytesIO position
+            except RateLimitError:
+                if attempt >= max_retries - 1:
+                    raise
+                time.sleep(2 ** (attempt + 1))
                 audio_file[1].seek(0)
-                continue
-            raise
+    finally:
+        client.close()
 
 
 async def transcribe_async(

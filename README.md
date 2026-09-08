@@ -10,7 +10,7 @@
 
 ## 1. The One-Sentence Claim
 
-> Streaming LLM tokens directly into Rime's WebSocket API cuts TTS-stage first-audio latency by ≥50% (measured: **71.6% reduction**), and reduces overall end-to-end perceived response time by approximately **33–43%** (42.6% median reduction).
+> Streaming LLM tokens directly into Rime's WebSocket API cuts controlled TTS-stage first-audio latency by **73.6% at P50** and **76.5% at P95**.
 
 ---
 
@@ -54,11 +54,11 @@ Human conversational turn-taking happens naturally within **200–500 ms**. When
   Full audio generated            First audio chunk at T3            │
       │                               │                              │
       ▼                               ▼                              │
-  T3 (Audible) ~ 2.5 - 3.3 s      T3 (Audible) ~ 1.6 - 2.3 s         │
+  First audio from Rime ~ 1.5 - 3.5 s   First audio from Rime ~ 0.4 - 0.8 s │
   (Perceived Delay: HIGH)         (Perceived Delay: LOW)             │
 ```
 
-> **Measured LLM Latency:** In live benchmarking across the 10 representative queries, total LLM generation time (`shared_llm_ms`) was empirically measured via `scripts/run_benchmark.py` at **1,227.7 ms – 1,467.7 ms** (mean **1,291.1 ms**). This measured range replaces earlier theoretical estimates.
+> **Measured LLM Latency:** In the 2026-09-08 live benchmark, shared LLM generation time (`shared_llm_ms`) ranged from **830.8 ms to 3,143.0 ms**. The benchmark freezes each response before comparing the two TTS paths.
 
 ### Exact Rime Configuration
 
@@ -83,15 +83,14 @@ Full repeatable benchmark methodology, CSV datasets, and query-by-query traces a
 
 | Metric | Naive Mode (HTTP Full Buffering) | Optimized Mode (Rime WS Token Streaming) | Absolute Reduction | Relative Improvement |
 |---|---|---|---|---|
-| **TTS First Audio Latency Median (P50)** | **1,688.6 ms** | **480.3 ms** | **1,208.3 ms** | **71.6% Reduction** ✅ |
-| **TTS First Audio Latency P95 Tail** | **1,873.3 ms** | **746.9 ms** | **1,126.4 ms** | **60.1% Reduction** ✅ |
-| **End-to-End TTFA Median (P50)** | **3,012.7 ms** | **1,730.3 ms** | **1,282.4 ms** | **42.6% Reduction** ✅ |
-| **End-to-End TTFA P95 Tail** | **3,212.4 ms** | **2,144.7 ms** | **1,067.7 ms** | **33.2% Reduction** ✅ |
+| **TTS First Audio Latency Median (P50)** | **1,702.0 ms** | **449.7 ms** | **1,252.4 ms** | **73.6% Reduction** ✅ |
+| **TTS First Audio Latency P95 Tail** | **2,865.2 ms** | **672.1 ms** | **2,193.1 ms** | **76.5% Reduction** ✅ |
 
 - **Isolated Delivery Mechanism:** LLM completions are generated and frozen once per query, feeding identical text to both TTS paths to eliminate sampling variance as a confound.
+- **Scope:** This benchmark reports TTS dispatch-to-first-audio latency. It does not claim an end-to-end STT-to-audio measurement.
 - **Visual Artifacts:** Generated chart saved to `benchmark_result.png`; raw data exported to `benchmark_results.csv`.
 
-> **Note on End-to-End Metric Variance:** Across multiple live benchmark runs, the core lever—TTS-stage first-audio latency reduction—remains rock-solid at **~71.6%–71.7%**. In contrast, the composite end-to-end TTFA reduction naturally fluctuates between **38.5% and 42.6%**. This variation is driven by: (1) transatlantic public internet TCP/TLS handshake jitter on the un-warmed Naive HTTP POST connection (1,650–1,900 ms) versus persistent WebSocket stability (472–480 ms), and (2) LLM generation speed fluctuations shifting the ratio's denominator. Neither run uses precomputed or cached values.
+> **Note on measurement scope:** The current repeatable benchmark intentionally excludes STT and does not synthesize an end-to-end TTFA number. The reported values isolate the TTS delivery mechanism using identical frozen text.
 
 ---
 
@@ -172,9 +171,11 @@ Run each phase test script sequentially to verify individual components:
 ### Failure Behavior & Error Handling
 The codebase implements explicit handling for upstream API, transport, and client-level failures:
 
-- **Groq Rate Limiting (429):** In `backend/llm.py`, `stream_completion()` detects 429 rate limit exceptions and performs exponential backoff retries (up to 3 attempts with wait intervals of $2^{\text{attempt}+1}$ seconds, i.e., 2s, 4s). If all retries fail or non-429 exceptions occur, the exception is raised.
+- **Startup Configuration:** The FastAPI application validates `RIME_API_KEY` and `GROQ_API_KEY` during startup and fails loudly if either is missing. Lower-level clients retain defensive checks for direct script use.
+- **Groq Rate Limiting (429):** In `backend/llm.py` and `backend/stt.py`, typed `RateLimitError` exceptions trigger exponential backoff retries (up to 3 attempts with wait intervals of $2^{\text{attempt}+1}$ seconds, i.e., 2s, 4s). If all retries fail or non-429 exceptions occur, the exception is raised.
 - **Rime HTTP Failures (Naive Path):** In `backend/tts.py`, `synthesize_naive_sync()` issues `response.raise_for_status()`. Any non-200 HTTP response (such as 400 Bad Request or 500 Internal Server Error) raises `requests.exceptions.HTTPError`. In `backend/main.py`, this is caught by the pipeline handler and sent to the client as a WebSocket JSON message: `{"type": "error", "message": f"Pipeline error: {e}"}`.
-- **Rime WebSocket Disconnects & Protocol Errors (Optimized Path):** In `backend/tts.py`, `synthesize_streaming()` raises a `RuntimeError` if Rime returns an `error` event, and catches network or connection drop exceptions in background sender and receiver tasks, forwarding the exception onto the audio queue. In `backend/main.py`, this is caught and relayed as `{"type": "error", "message": f"Pipeline error: {e}"}`.
+- **Rime WebSocket Disconnects & Protocol Errors (Optimized Path):** In `backend/tts.py`, `synthesize_streaming()` raises if Rime returns an `error` event or closes before `done`; sender, receiver, and token tasks are cancelled and awaited on every exit path. In `backend/main.py`, this is caught and relayed as `{"type": "error", "message": f"Pipeline error: {e}"}`.
+- **Duplicate Requests and Playback Errors:** The frontend blocks new submissions while a response is generating or playing, revokes audio blob URLs on success, error, interruption, and rejected playback, and attempts to play partial audio when the server reports a stream error after audio has arrived.
 - **Client-Side UI & Network Recovery:** In `frontend/app.js`, error events hide the streaming indicator, log the error to `console.error`, and alert the user. If the client WebSocket drops (`onclose`), it automatically attempts reconnection every 2 seconds (`setTimeout(initWebSocket, 2000)`).
 
 ---

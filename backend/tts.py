@@ -162,7 +162,7 @@ async def synthesize_streaming(
         raise ValueError("RIME_API_KEY is not set in environment or .env file.")
 
     headers = {"Authorization": f"Bearer {RIME_API_KEY}"}
-    audio_queue: asyncio.Queue[bytes | Exception | None] = asyncio.Queue()
+    audio_queue: asyncio.Queue[tuple[str, bytes | Exception | None]] = asyncio.Queue()
     token_queue: asyncio.Queue[str | None] = asyncio.Queue()
 
     # t_connect_start — before WS handshake. Not part of TTS_FIRST_CHUNK_LATENCY;
@@ -227,7 +227,7 @@ async def synthesize_streaming(
                         first_token = False
 
             except Exception as exc:
-                await audio_queue.put(exc)
+                await audio_queue.put(("error", exc))
 
         # _receiver: reads events from Rime WS, decodes audio chunks, pushes to audio_queue.
         async def _receiver():
@@ -235,6 +235,7 @@ async def synthesize_streaming(
                 first_audio = True
                 total_bytes = 0
                 total_chunks = 0
+                done_received = False
                 async for message in ws:
                     event = json.loads(message)
                     event_type = event.get("type")
@@ -261,7 +262,7 @@ async def synthesize_streaming(
                             metrics["tts_first_chunk_latency_ms"] = (now - t_dispatch) * 1000
                             first_audio = False
 
-                        await audio_queue.put(audio_bytes)
+                        await audio_queue.put(("audio", audio_bytes))
 
                     elif event_type == "timestamps":
                         pass  # Word-level timing data; not needed for latency comparison.
@@ -271,28 +272,39 @@ async def synthesize_streaming(
                             metrics["t_done"] = time.perf_counter()
                             metrics["total_audio_bytes"] = total_bytes
                             metrics["total_chunks"] = total_chunks
+                        done_received = True
                         break
 
                     elif event_type == "error":
                         raise RuntimeError(f"Rime WebSocket error: {event}")
 
+                if not done_received:
+                    raise RuntimeError("Rime WebSocket closed before sending a done event.")
+
             except Exception as exc:
-                await audio_queue.put(exc)
+                await audio_queue.put(("error", exc))
             finally:
-                await audio_queue.put(None)  # Sentinel — signals the consumer loop to stop.
+                await audio_queue.put(("end", None))
 
         sender_task = asyncio.create_task(_sender())
         receiver_task = asyncio.create_task(_receiver())
 
         try:
             while True:
-                item = await audio_queue.get()
-                if item is None:
+                item_type, item = await audio_queue.get()
+                if item_type == "audio":
+                    yield item  # type: ignore[misc]
+                elif item_type == "error":
+                    raise item  # type: ignore[misc]
+                elif item_type == "end":
                     break
-                if isinstance(item, Exception):
-                    raise item
-                yield item
         finally:
-            await token_pull_task
-            await sender_task
-            await receiver_task
+            for task in (token_pull_task, sender_task, receiver_task):
+                if not task.done():
+                    task.cancel()
+            await asyncio.gather(
+                token_pull_task,
+                sender_task,
+                receiver_task,
+                return_exceptions=True,
+            )
